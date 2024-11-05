@@ -1,0 +1,10 @@
+transformers==4.44.2
+datasets
+torch
+noisereduce
+librosa
+peft
+evaluate
+jiwer
+huggingface_hub
+numpy==1.24.1
