@@ -2,6 +2,7 @@ import os
 import logging
 from peft import LoraConfig
 from src.data_preparation import Preprocessor
+from src.data_preparation import Augmentation
 from src.model_train import Training
 from transformers import Seq2SeqTrainingArguments
 import torch
@@ -30,6 +31,10 @@ ds = data_processing.load()
 
 # Extract audio features via Log-Mel spectrogram and Whisper Encoder
 ds = ds.map(data_processing.prepare_dataset, remove_columns=list(next(iter(ds.values())).features)).with_format("torch")
+
+# Apply time scaling ang gaussian noise to augment the Train dataset
+ds_augmentation = Augmentation(dataset_to_augment=ds["train"])
+ds["train"] = ds_augmentation.augment()
 
 # Save processed datasets to disk
 data_processing.save_hf_datasets(dataset_dict=ds, prefix="ASR")
@@ -71,8 +76,6 @@ lora_config = LoraConfig(
     lora_dropout=0.01, 
     bias="none")
 
-# Apply LoRA
-model_trainer.apply_lora(lora_config)
 
 # Initialize Training object
 model_trainer = Training(
@@ -80,6 +83,9 @@ model_trainer = Training(
     finetuned_model_id,
     training_args, 
     language, task)
+
+# Apply LoRA
+model_trainer.apply_lora(lora_config)
 
 # Start training loop
 model_trainer.train(ds)

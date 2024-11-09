@@ -1,8 +1,10 @@
-from datasets import load_dataset, Audio, load_from_disk, IterableDatasetDict, interleave_datasets, concatenate_datasets
+from datasets import load_dataset, Audio, load_from_disk, IterableDatasetDict, concatenate_datasets
 
 from transformers import WhisperProcessor, GenerationConfig
 from huggingface_hub import login
 from transformers.models.whisper.english_normalizer import BasicTextNormalizer
+import numpy as np
+import librosa
 
 from typing import Any, Dict, List, Union
 import os
@@ -121,4 +123,40 @@ class Preprocessor:
 
 
 
+class Augmentation:
 
+    def __init__(self, dataset_to_augment, time_scaling_factor=50.0, sigma=0.05):
+        self.dataset_to_augment = dataset_to_augment
+        self.ds_length = len(self.dataset_to_augment)
+        self.time_scaling_factor = np.abs(time_scaling_factor+1e-7)
+        self.sigma = np.abs(sigma+1e-7)
+
+
+    def sample_concat(self, sample):
+
+        rand_idx = np.random.randint(0,self.ds_length)
+        rand_sample = self.dataset_to_augment[rand_idx]
+
+        # Time scaling
+        time_scaling = 1+(np.random.randint(-1,1))*np.random.random()/self.time_scaling_factor
+        rand_sample["audio"]["array"] = librosa.effects.time_stretch(y=rand_sample["audio"]["array"],
+                                                                     rate=time_scaling)
+
+        # Gaussian noise
+        gaussian_noise = np.random.normal(0, self.sigma, len(rand_sample["audio"]["array"]))
+        rand_sample["audio"]["array"] = rand_sample["audio"]["array"] + gaussian_noise
+
+        # Combining new samples
+        new_sample = sample
+        new_sample["audio"]["path"] = ''
+        new_sample["audio"]["array"] = np.concatenate([rand_sample["audio"]["array"], sample["audio"]["array"]])
+        new_sample["audio"]["sampling_rate"] = sample["audio"]["sampling_rate"]
+        new_sample["transcription"] = rand_sample["transcription"] + " " + sample["transcription"]
+
+        return new_sample
+
+    def augment(self):
+        augmented_dataset = self.dataset_to_augment.map(self.sample_concat)
+        self.dataset_to_augment = concatenate_datasets([augmented_dataset,self.dataset_to_augment])
+
+        return self.dataset_to_augment
